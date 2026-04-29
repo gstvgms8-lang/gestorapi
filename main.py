@@ -1,11 +1,17 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import pyodbc
 
 app = FastAPI(title="API Gestor", version="1.0")
 
-# =========================================
-# 🔥 CONEXÃO (IGUAL SUA MACRO)
-# =========================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # depois podemos restringir para seu domínio
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 def get_connection():
     try:
         conn = pyodbc.connect(
@@ -13,85 +19,84 @@ def get_connection():
             "SERVER=sistema.atdata.com.br,35987;"
             "UID=MasterLog;"
             "PWD=Master1252@#;"
+            "TrustServerCertificate=yes;"
         )
         return conn
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro conexão: {e}")
 
-
-# =========================================
-# 🔥 CONSULTA PADRÃO (SUA MACRO)
-# =========================================
 def consultar_estoque(cdprop):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    query = """
-    SELECT 
-        cdmaterialestoque,
-        dsmaterialservico,
-        SUM(qtENTRADA) AS ENTRADA,
-        SUM(qtdesaldo) AS SALDO
-    FROM vwr_posicaoestoque
-    WHERE cdpropestoque = ?
-    GROUP BY cdmaterialestoque, dsmaterialservico
-    ORDER BY cdmaterialestoque
-    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute(query, (cdprop,))
-    colunas = [col[0] for col in cursor.description]
+        query = """
+        SELECT 
+            cdmaterialestoque,
+            dsmaterialservico,
+            SUM(qtENTRADA) AS ENTRADA,
+            SUM(qtdesaldo) AS SALDO
+        FROM vwr_posicaoestoque
+        WHERE cdpropestoque = ?
+        GROUP BY cdmaterialestoque, dsmaterialservico
+        ORDER BY cdmaterialestoque
+        """
 
-    dados = []
-    for row in cursor.fetchall():
-        dados.append(dict(zip(colunas, row)))
+        cursor.execute(query, (cdprop,))
+        colunas = [col[0] for col in cursor.description]
 
-    cursor.close()
-    conn.close()
+        dados = []
+        for row in cursor.fetchall():
+            dados.append(dict(zip(colunas, row)))
 
-    return dados
+        return {
+            "codigo": cdprop,
+            "total": len(dados),
+            "dados": dados
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro consulta: {e}")
+
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+        except:
+            pass
 
 
-# =========================================
-# 🔥 ENDPOINTS INDIVIDUAIS (IGUAL VBA)
-# =========================================
+@app.get("/")
+def root():
+    return {"status": "API Gestor rodando"}
 
 @app.get("/gestor/vidros")
 def gestor_vidros():
     return consultar_estoque(323)
 
-
 @app.get("/gestor/fabrica")
 def gestor_fabrica():
     return consultar_estoque(7899)
-
 
 @app.get("/gestor/cd")
 def gestor_cd():
     return consultar_estoque(12035)
 
-
 @app.get("/gestor/armazem")
 def gestor_armazem():
     return consultar_estoque(12124)
 
-
-# =========================================
-# 🔥 ENDPOINT DINÂMICO (FLEXÍVEL)
-# =========================================
 @app.get("/gestor/{cdprop}")
 def gestor_dinamico(cdprop: int):
     if cdprop not in [323, 7899, 12035, 12124]:
-        raise HTTPException(
-            status_code=400,
-            detail="Código inválido"
-        )
-
+        raise HTTPException(status_code=400, detail="Código inválido")
     return consultar_estoque(cdprop)
 
-
-# =========================================
-# 🔥 TODOS DE UMA VEZ
-# =========================================
 @app.get("/gestor")
 def gestor_todos():
     return {
@@ -100,11 +105,3 @@ def gestor_todos():
         "cd": consultar_estoque(12035),
         "armazem": consultar_estoque(12124),
     }
-
-
-# =========================================
-# 🔥 TESTE
-# =========================================
-@app.get("/")
-def root():
-    return {"status": "API Gestor rodando"}
