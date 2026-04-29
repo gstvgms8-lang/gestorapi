@@ -4,27 +4,40 @@ import pyodbc
 
 app = FastAPI(title="API Gestor", version="1.0")
 
+# =========================================
+# 🔥 CORS (OBRIGATÓRIO PARA FLUTTER WEB)
+# =========================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # depois podemos restringir para seu domínio
-    allow_credentials=False,
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# =========================================
+# 🔥 CONEXÃO (AJUSTADA PARA LINUX / RENDER)
+# =========================================
 def get_connection():
     try:
         conn = pyodbc.connect(
-            "DRIVER={SQL Server};"
-            "SERVER=sistema.atdata.com.br,35987;"
+            "DRIVER={FreeTDS};"
+            "SERVER=sistema.atdata.com.br;"
+            "PORT=35987;"
             "UID=MasterLog;"
             "PWD=Master1252@#;"
-            "TrustServerCertificate=yes;"
+            "TDS_Version=8.0;"
         )
         return conn
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro conexão: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro conexão: {e}"
+        )
 
+# =========================================
+# 🔥 CONSULTA PADRÃO (IGUAL SUA MACRO)
+# =========================================
 def consultar_estoque(cdprop):
     conn = None
     cursor = None
@@ -48,9 +61,10 @@ def consultar_estoque(cdprop):
         cursor.execute(query, (cdprop,))
         colunas = [col[0] for col in cursor.description]
 
-        dados = []
-        for row in cursor.fetchall():
-            dados.append(dict(zip(colunas, row)))
+        dados = [
+            dict(zip(colunas, row))
+            for row in cursor.fetchall()
+        ]
 
         return {
             "codigo": cdprop,
@@ -59,7 +73,10 @@ def consultar_estoque(cdprop):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro consulta: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro consulta: {e}"
+        )
 
     finally:
         try:
@@ -70,6 +87,10 @@ def consultar_estoque(cdprop):
         except:
             pass
 
+
+# =========================================
+# 🔥 ROTAS
+# =========================================
 
 @app.get("/")
 def root():
@@ -94,7 +115,10 @@ def gestor_armazem():
 @app.get("/gestor/{cdprop}")
 def gestor_dinamico(cdprop: int):
     if cdprop not in [323, 7899, 12035, 12124]:
-        raise HTTPException(status_code=400, detail="Código inválido")
+        raise HTTPException(
+            status_code=400,
+            detail="Código inválido"
+        )
     return consultar_estoque(cdprop)
 
 @app.get("/gestor")
